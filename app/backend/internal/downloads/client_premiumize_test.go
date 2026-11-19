@@ -136,3 +136,54 @@ func TestPremiumizeAddNotFoundInCloud(t *testing.T) {
 		t.Fatalf("expected not-found error, got %v", err)
 	}
 }
+
+func TestPremiumizeMatchesTitleAndYearInCloudFolder(t *testing.T) {
+	const cdnURL = "https://cdn.premiumize.me/dl/xyz/Full.Metal.Jacket.1987.mkv"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/transfer/list":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "transfers": []any{}})
+		case "/api/folder/search":
+			if r.URL.Query().Get("q") == "Full Metal Jacket" {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"status": "success",
+					"content": []map[string]any{
+						{"id": "fld-fmj", "name": "Full Metal Jacket (1987)", "type": "folder"},
+					},
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "content": []any{}})
+		case "/api/folder/list":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "success",
+				"content": []map[string]any{
+					{"id": "f-1", "name": "Full.Metal.Jacket.1987.mkv", "type": "file", "size": 5000000000, "link": cdnURL},
+				},
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	pm := NewPremiumize(srv.URL, "key", srv.Client())
+	pm.SaveRoot = t.TempDir()
+
+	id, err := pm.Add(context.Background(), AddRequest{
+		Name:     "Full Metal Jacket 1987 REPACK UHD BluRay 1080p DDP 5 1 DoVi HDR10 x265-SM737",
+		Category: "movies",
+		InfoHash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+	})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	job, err := pm.Get(context.Background(), id)
+	if err != nil || job.State != StateFinished || len(job.Files) != 1 {
+		t.Fatalf("Get() = %+v, %v", job, err)
+	}
+	b, err := os.ReadFile(job.Files[0].Name)
+	if err != nil || strings.TrimSpace(string(b)) != cdnURL {
+		t.Fatalf(".strm content = %q, %v", string(b), err)
+	}
+}

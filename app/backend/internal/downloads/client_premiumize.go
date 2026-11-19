@@ -17,6 +17,7 @@ import (
 	"time"
 
 	domain "github.com/HolyArrs/holyarrs/app/backend/internal/core/model"
+	"github.com/HolyArrs/holyarrs/app/backend/internal/core/releasename"
 )
 
 const (
@@ -544,26 +545,16 @@ func (p *Premiumize) findCloudFilesByName(ctx context.Context, name string) ([]p
 	if strings.TrimSpace(name) == "" {
 		return nil, "", nil
 	}
-	q := url.Values{}
-	q.Set("q", pmSearchTerm(name))
-	var res pmFolderList
-	if err := p.get(ctx, "/api/folder/search", q, &res); err == nil && res.Status == "success" {
-		for _, it := range res.Content {
-			if it.Type == "folder" && pmSameName(it.Name, name) {
-				files, err := p.collectFolderFiles(ctx, it.ID, "")
-				return files, it.Name, err
-			}
-			if it.Type == "file" && pmVideoExts[strings.ToLower(filepath.Ext(it.Name))] && pmSameName(strings.TrimSuffix(it.Name, filepath.Ext(it.Name)), name) {
-				det, err := p.itemDetails(ctx, it.ID)
-				if err != nil {
-					return nil, "", err
-				}
-				return []pmCloudFile{{RelPath: det.Name, Size: det.Size, Link: det.Link, StreamLink: det.StreamLink}}, det.Name, nil
-			}
+	if res, err := p.searchFolder(ctx, pmSearchTerm(name), name); err == nil && len(res) > 0 {
+		return res, name, nil
+	}
+	if titleTerm := pmTitleSearchTerm(name); titleTerm != "" && titleTerm != pmSearchTerm(name) {
+		if res, err := p.searchFolder(ctx, titleTerm, name); err == nil && len(res) > 0 {
+			return res, name, nil
 		}
 	}
 
-	// Fallback to /api/item/listall for direct file matches.
+	// Fallback to /api/item/listall for direct file or folder matches.
 	var all pmItemListAll
 	if err := p.get(ctx, "/api/item/listall", nil, &all); err != nil {
 		return nil, "", err
@@ -576,7 +567,7 @@ func (p *Premiumize) findCloudFilesByName(ctx context.Context, name string) ([]p
 			continue
 		}
 		base := strings.TrimSuffix(it.Name, filepath.Ext(it.Name))
-		if pmSameName(base, name) || pmPathFolderMatches(it.Path, name) {
+		if pmMatchesRelease(base, name) || pmPathFolderMatches(it.Path, name) {
 			det, err := p.itemDetails(ctx, it.ID)
 			if err != nil {
 				return nil, "", err
@@ -585,6 +576,31 @@ func (p *Premiumize) findCloudFilesByName(ctx context.Context, name string) ([]p
 		}
 	}
 	return nil, "", nil
+}
+
+func (p *Premiumize) searchFolder(ctx context.Context, query, wantName string) ([]pmCloudFile, error) {
+	if strings.TrimSpace(query) == "" {
+		return nil, nil
+	}
+	q := url.Values{}
+	q.Set("q", query)
+	var res pmFolderList
+	if err := p.get(ctx, "/api/folder/search", q, &res); err != nil || res.Status != "success" {
+		return nil, err
+	}
+	for _, it := range res.Content {
+		if it.Type == "folder" && pmMatchesRelease(it.Name, wantName) {
+			return p.collectFolderFiles(ctx, it.ID, "")
+		}
+		if it.Type == "file" && pmVideoExts[strings.ToLower(filepath.Ext(it.Name))] && pmMatchesRelease(strings.TrimSuffix(it.Name, filepath.Ext(it.Name)), wantName) {
+			det, err := p.itemDetails(ctx, it.ID)
+			if err != nil {
+				return nil, err
+			}
+			return []pmCloudFile{{RelPath: det.Name, Size: det.Size, Link: det.Link, StreamLink: det.StreamLink}}, nil
+		}
+	}
+	return nil, nil
 }
 
 func (p *Premiumize) get(ctx context.Context, endpoint string, q url.Values, dst any) error {
@@ -636,6 +652,11 @@ func matchPMTransfer(transfers []pmTransfer, hash, name string) (pmTransfer, boo
 	if name != "" {
 		for _, tr := range transfers {
 			if pmSameName(tr.Name, name) {
+				return tr, true
+			}
+		}
+		for _, tr := range transfers {
+			if pmMatchesRelease(tr.Name, name) {
 				return tr, true
 			}
 		}
@@ -708,11 +729,51 @@ func pmSameName(a, b string) bool {
 
 func pmPathFolderMatches(p, name string) bool {
 	for _, part := range strings.Split(p, "/") {
-		if pmSameName(part, name) {
+		if pmMatchesRelease(part, name) {
 			return true
 		}
 	}
 	return false
+}
+
+func pmMatchesRelease(cand, want string) bool {
+	if pmSameName(cand, want) {
+		return true
+	}
+	cp := releasename.Parse(cand, releasename.Hints{})
+	wp := releasename.Parse(want, releasename.Hints{})
+	ct, wt := pmNormalize(cp.Title.Value), pmNormalize(wp.Title.Value)
+	if ct == "" || wt == "" || ct != wt {
+		return false
+	}
+	if wp.Year.Value > 0 && cp.Year.Value > 0 && cp.Year.Value != wp.Year.Value {
+		return false
+	}
+	if wp.Show != nil {
+		if cp.Show == nil || cp.Show.Season != wp.Show.Season {
+			return false
+		}
+		if len(wp.Show.Episodes) > 0 {
+			epMatch := false
+			for _, we := range wp.Show.Episodes {
+				for _, ce := range cp.Show.Episodes {
+					if we == ce {
+						epMatch = true
+						break
+					}
+				}
+			}
+			if !epMatch {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func pmTitleSearchTerm(name string) string {
+	p := releasename.Parse(name, releasename.Hints{})
+	return strings.TrimSpace(p.Title.Value)
 }
 
 func pmSearchTerm(name string) string {
