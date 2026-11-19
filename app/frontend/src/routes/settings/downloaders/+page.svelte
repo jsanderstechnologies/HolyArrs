@@ -147,16 +147,7 @@
 
 	const kindGroups = $derived([
 		{ id: 'torrents', title: t('settings.downloaders.torrentsHead'), tiles: [
-			{ value: 'qbittorrent' as const, name: 'qBittorrent', badge: 'qB', hue: 210, hint: t('settings.downloaders.mostUsed') },
-			{ value: 'transmission' as const, name: 'Transmission', badge: 'Tr', hue: 0 },
-			{ value: 'deluge' as const, name: 'Deluge', badge: 'De', hue: 195 },
-			{ value: 'rtorrent' as const, name: 'rTorrent', badge: 'rT', hue: 270 },
-			{ value: 'aria2' as const, name: 'aria2', badge: 'a2', hue: 30 },
-			{ value: 'premiumize' as const, name: 'Premiumize.me', badge: 'PM', hue: 165 }
-		] },
-		{ id: 'usenet', title: t('settings.downloaders.usenetHead'), tiles: [
-			{ value: 'sabnzbd' as const, name: 'SABnzbd', badge: 'SB', hue: 45, hint: t('settings.downloaders.mostUsed') },
-			{ value: 'nzbget' as const, name: 'NZBGet', badge: 'NG', hue: 140 }
+			{ value: 'premiumize' as const, name: 'Premiumize.me', badge: 'PM', hue: 165, hint: 'Cloud .strm' }
 		] }
 	]);
 

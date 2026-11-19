@@ -113,6 +113,9 @@ func (s *Searcher) askAll(ctx context.Context, r *jobs.Run, q Query, hand, tv bo
 		if slowed != nil {
 			s.pause(ctx, src, slowed)
 		}
+		if src.Format == "site" && src.Extra[extraSiteKind] == "torrentio" {
+			items = filterTorrentioByPremiumize(ctx, s.Store, s.Secrets, qq, items)
+		}
 		for _, item := range items {
 			all = append(all, found{src: src, item: item, keys: secretValues(cl.cfg)})
 		}

@@ -65,16 +65,16 @@ export function uses(s: Pick<SourceView, 'use_for'>): string {
 
 export function emptyForm(): SourceForm {
 	return {
-		name: '',
-		format: 'torznab',
-		site: '',
+		name: 'Torrentio',
+		format: 'site',
+		site: 'torrentio',
 		protocol: 'torrent',
-		url: '',
+		url: 'https://torrentio.strem.fun',
 		api_key: '',
-		feed: true,
+		feed: false,
 		auto_search: true,
 		hand_search: true,
-		kinds: ['movie', 'tv', 'music'],
+		kinds: ['movie', 'tv'],
 		min_seeders: 1,
 		priority: 25,
 		searches_per_window: 0,

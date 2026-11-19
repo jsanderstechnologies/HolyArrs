@@ -94,7 +94,7 @@
 
 	function setFormat(v: string) {
 		form.format = v as SourceForm['format'];
-		if (form.format === 'site' && !form.site) pickSite(form, builtInSites[0].id);
+		if (form.format === 'site' && !form.site) pickSite(form, 'torrentio');
 	}
 
 	function toggleKind(k: string, on: boolean) {
@@ -184,16 +184,13 @@
 			<div class="two">
 				<Field id="so-format" label={t('settings.sources.feedKind')}>
 					<select id="so-format" class="input" value={form.format} disabled={!isNew && form.format === 'site'} onchange={(e) => setFormat(e.currentTarget.value)}>
-						<option value="torznab">{t('settings.sources.torznab')}</option>
-						<option value="newznab">{t('settings.sources.newznab')}</option>
-						<option value="rss">{t('settings.sources.rss')}</option>
-						{#if isNew || form.format === 'site'}<option value="site">{t('settings.sources.site')}</option>{/if}
+						<option value="site">{t('settings.sources.site')}</option>
 					</select>
 				</Field>
 				{#if form.format === 'site'}
 					<Field id="so-site" label={t('settings.sources.siteLabel')}>
 						<select id="so-site" class="input" value={form.site} disabled={!isNew} onchange={(e) => pickSite(form, e.currentTarget.value)}>
-							{#each builtInSites as s (s.id)}<option value={s.id}>{s.name}</option>{/each}
+							{#each builtInSites.filter((s) => s.id === 'torrentio') as s (s.id)}<option value={s.id}>{s.name}</option>{/each}
 						</select>
 					</Field>
 				{:else}

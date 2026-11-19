@@ -5,9 +5,9 @@ import { api, message, ApiError } from '#lib/core/api.ts';
 import { t as say } from '#lib/core/i18n/i18n.svelte.ts';
 
 export function createWelcomeDownloader(ctx: any) {
-	const dlKinds: DownloaderForm['kind'][] = ['qbittorrent', 'sabnzbd', 'transmission', 'nzbget', 'deluge', 'rtorrent', 'aria2', 'premiumize'];
+	const dlKinds: DownloaderForm['kind'][] = ['premiumize'];
 	const dlPorts: Record<DownloaderForm['kind'], string> = { qbittorrent: '8080', sabnzbd: '8080', transmission: '9091', nzbget: '6789', deluge: '8112', rtorrent: '8000', aria2: '6800', premiumize: '' };
-	let dl = $state<DownloaderForm>(emptyForm());
+	let dl = $state<DownloaderForm>(emptyForm('premiumize'));
 	// Every connected downloader, each with its last test answer; the form shows when there is none yet or the owner adds another.
 	let dlList = $state<DownloaderView[]>([]);
 	let dlTests = $state<Record<number, { ok: boolean; text: string }>>({});
