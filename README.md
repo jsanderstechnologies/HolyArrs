@@ -61,7 +61,7 @@ Save this as `docker-compose.yml` in a new folder on a local disk:
 name: holyarrs
 services:
   holyarrs:
-    image: holyarrs/holyarrs:latest
+    image: ghcr.io/jsanderstechnologies/holyarrs:latest
     container_name: holyarrs
     environment:
       - PUID=1000
@@ -85,6 +85,16 @@ docker compose up -d
 Open `http://your-server:6262` and make the owner account. A short setup walks you through folders, a downloader and a Source.
 
 No API keys to hunt down. No second container. Every setting is explained in [the manual](#manual) further down.
+
+## ☁️ Premiumize.me Cloud & `.strm` Integration
+
+This fork adds a built-in **Premiumize.me** downloader (`premiumize`) and full `.strm` support across the importer and library scanner:
+
+- **Cloud matching instead of local downloading:** When HolyArrs grabs a release, it searches your Premiumize.me cloud (`/api/transfer/list`, `/api/folder/search`, `/api/item/listall`) by infohash or release name for a matching torrent or file already in your cloud.
+- **`.strm` generation with CDN URLs:** Once matched, HolyArrs fetches the direct Premiumize CDN link (`/api/folder/list` or `/api/item/details`) and writes a `.strm` file containing that CDN URL.
+- **Automatic library naming & import:** HolyArrs's importer and library scanner recognize `.strm` as a valid video format (skipping binary container/size checks) and rename/place it into your library using your naming rules — for example, `Full Metal Jacket (1987)/Full Metal Jacket (1987).strm`.
+- **Setup:** Go to **Settings → Downloaders**, choose **Premiumize.me** (`https://www.premiumize.me`), and enter your Premiumize.me API key (**Account → API Key**).
+- **Docker images:** Multi-arch (`linux/amd64`, `linux/arm64`) images are built and published via GitHub Actions to `ghcr.io/jsanderstechnologies/holyarrs:latest` (and version tags such as `:1.2.1`).
 
 <a id="why"></a>
 
