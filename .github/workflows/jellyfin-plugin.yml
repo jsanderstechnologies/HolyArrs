@@ -31,9 +31,9 @@ jobs:
         id: pkg
         run: |
           cd plugins/jellyfin-holyarrs/dist
-          zip -j ../jellyfin-holyarrs_1.0.0.0.zip Jellyfin.Plugin.HolyArrs.dll
+          zip -j ../jellyfin-holyarrs_1.0.1.0.zip Jellyfin.Plugin.HolyArrs.dll
           cd ..
-          md5=$(md5sum jellyfin-holyarrs_1.0.0.0.zip | awk '{print $1}')
+          md5=$(md5sum jellyfin-holyarrs_1.0.1.0.zip | awk '{print $1}')
           echo "md5=$md5" >> "$GITHUB_OUTPUT"
           echo "ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
@@ -50,10 +50,10 @@ jobs:
               "category": "General",
               "versions": [
                 {
-                  "version": "1.0.0.0",
-                  "changelog": "Initial release with HolyArrs Discover & Request integration.",
+                  "version": "1.0.1.0",
+                  "changelog": "Show main menu entry as Requests and update API key hint.",
                   "targetAbi": "10.10.0.0",
-                  "sourceUrl": "https://github.com/${{ github.repository }}/releases/download/jellyfin-v1.0.0/jellyfin-holyarrs_1.0.0.0.zip",
+                  "sourceUrl": "https://github.com/${{ github.repository }}/releases/download/jellyfin-v1.0.1/jellyfin-holyarrs_1.0.1.0.zip",
                   "checksum": "${{ steps.pkg.outputs.md5 }}",
                   "timestamp": "${{ steps.pkg.outputs.ts }}"
                 }
@@ -65,9 +65,9 @@ jobs:
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: jellyfin-v1.0.0
-          name: Jellyfin Plugin v1.0.0
-          files: plugins/jellyfin-holyarrs/jellyfin-holyarrs_1.0.0.0.zip
+          tag_name: jellyfin-v1.0.1
+          name: Jellyfin Plugin v1.0.1
+          files: plugins/jellyfin-holyarrs/jellyfin-holyarrs_1.0.1.0.zip
 
       - name: Commit manifest.json
         run: |
