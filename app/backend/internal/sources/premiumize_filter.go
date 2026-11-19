@@ -6,29 +6,21 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/HolyArrs/holyarrs/app/backend/internal/core/database"
 	domain "github.com/HolyArrs/holyarrs/app/backend/internal/core/model"
 	"github.com/HolyArrs/holyarrs/app/backend/internal/core/outbound"
-	"github.com/HolyArrs/holyarrs/app/backend/internal/core/releasename"
 )
 
-var pmBtihRe = regexp.MustCompile(`(?i)btih:([0-9a-f]{40})`)
+const pmCacheBatchSize = 50
 
-type pmCloudSnapshot struct {
-	hashes map[string]bool
-	names  []string
-}
-
-// filterTorrentioByPremiumize filters Torrentio results so only items already
-// available in the user's configured Premiumize.me cloud are returned.
+// filterTorrentioByPremiumize batch-checks Torrentio results against the
+// complete Premiumize.me cloud cache (/api/cache/check) and returns only the
+// items that are cached and ready for instant .strm creation.
 // If no Premiumize.me downloader is configured, items are returned unchanged.
-func filterTorrentioByPremiumize(ctx context.Context, store *database.Store, secrets SecretReader, q Query, items []Item) []Item {
+func filterTorrentioByPremiumize(ctx context.Context, store *database.Store, secrets SecretReader, items []Item) []Item {
 	if len(items) == 0 || store == nil || secrets == nil {
 		return items
 	}
@@ -45,13 +37,14 @@ func filterTorrentioByPremiumize(ctx context.Context, store *database.Store, sec
 		base = "https://www.premiumize.me"
 	}
 	client := pmHTTPClient(dls[0].AllowLocal)
-	snap, ok := fetchPMCloudSnapshot(ctx, client, base, strings.TrimSpace(apiKey), q.Title)
+	cached, ok := checkPMCloudCache(ctx, client, base, strings.TrimSpace(apiKey), items)
 	if !ok {
 		return items
 	}
 	out := make([]Item, 0, len(items))
 	for _, it := range items {
-		if pmItemAvailable(it, snap) {
+		h := strings.ToLower(strings.TrimSpace(it.InfoHash))
+		if h != "" && cached[h] {
 			out = append(out, it)
 		}
 	}
@@ -69,73 +62,51 @@ func pmHTTPClient(allowLocal bool) *http.Client {
 	}
 }
 
-func fetchPMCloudSnapshot(ctx context.Context, hc *http.Client, base, apiKey, title string) (pmCloudSnapshot, bool) {
-	snap := pmCloudSnapshot{hashes: map[string]bool{}}
+func checkPMCloudCache(ctx context.Context, hc *http.Client, base, apiKey string, items []Item) (map[string]bool, bool) {
+	seen := map[string]bool{}
+	var hashes []string
+	for _, it := range items {
+		h := strings.ToLower(strings.TrimSpace(it.InfoHash))
+		if h != "" && !seen[h] {
+			seen[h] = true
+			hashes = append(hashes, h)
+		}
+	}
+	if len(hashes) == 0 {
+		return map[string]bool{}, true
+	}
 
-	var trList struct {
-		Status    string `json:"status"`
-		Transfers []struct {
-			Name   string `json:"name"`
-			Status string `json:"status"`
-			Src    string `json:"src"`
-		} `json:"transfers"`
-	}
-	if err := pmGetJSON(ctx, hc, base+"/api/transfer/list", url.Values{"apikey": {apiKey}}, &trList); err != nil {
-		return snap, false
-	}
-	for _, tr := range trList.Transfers {
-		st := strings.ToLower(tr.Status)
-		if st == "error" || st == "deleted" || st == "timeout" || st == "banned" {
+	cached := map[string]bool{}
+	anyOK := false
+	for start := 0; start < len(hashes); start += pmCacheBatchSize {
+		end := start + pmCacheBatchSize
+		if end > len(hashes) {
+			end = len(hashes)
+		}
+		batch := hashes[start:end]
+		q := url.Values{}
+		q.Set("apikey", apiKey)
+		for _, h := range batch {
+			q.Add("items[]", h)
+		}
+		var res struct {
+			Status   string `json:"status"`
+			Response []bool `json:"response"`
+		}
+		if err := pmGetJSON(ctx, hc, base+"/api/cache/check", q, &res); err != nil {
 			continue
 		}
-		if m := pmBtihRe.FindStringSubmatch(tr.Src); len(m) == 2 {
-			snap.hashes[strings.ToLower(m[1])] = true
+		if res.Status != "success" {
+			continue
 		}
-		if strings.TrimSpace(tr.Name) != "" {
-			snap.names = append(snap.names, tr.Name)
-		}
-	}
-
-	if strings.TrimSpace(title) != "" {
-		var searchRes struct {
-			Status  string `json:"status"`
-			Content []struct {
-				Name string `json:"name"`
-				Type string `json:"type"`
-			} `json:"content"`
-		}
-		if err := pmGetJSON(ctx, hc, base+"/api/folder/search", url.Values{"apikey": {apiKey}, "q": {title}}, &searchRes); err == nil && searchRes.Status == "success" {
-			for _, c := range searchRes.Content {
-				if c.Type == "folder" {
-					snap.names = append(snap.names, c.Name)
-				} else if c.Type == "file" {
-					snap.names = append(snap.names, strings.TrimSuffix(c.Name, filepath.Ext(c.Name)))
-				}
+		anyOK = true
+		for i, h := range batch {
+			if i < len(res.Response) && res.Response[i] {
+				cached[h] = true
 			}
 		}
 	}
-
-	if len(snap.names) == 0 {
-		var all struct {
-			Status string `json:"status"`
-			Files  []struct {
-				Name string `json:"name"`
-				Path string `json:"path"`
-			} `json:"files"`
-		}
-		if err := pmGetJSON(ctx, hc, base+"/api/item/listall", url.Values{"apikey": {apiKey}}, &all); err == nil && all.Status == "success" {
-			for _, f := range all.Files {
-				snap.names = append(snap.names, strings.TrimSuffix(f.Name, filepath.Ext(f.Name)))
-				for _, part := range strings.Split(f.Path, "/") {
-					if strings.TrimSpace(part) != "" {
-						snap.names = append(snap.names, part)
-					}
-				}
-			}
-		}
-	}
-
-	return snap, true
+	return cached, anyOK
 }
 
 func pmGetJSON(ctx context.Context, hc *http.Client, endpoint string, q url.Values, dst any) error {
@@ -156,86 +127,4 @@ func pmGetJSON(ctx context.Context, hc *http.Client, endpoint string, q url.Valu
 		return err
 	}
 	return json.Unmarshal(b, dst)
-}
-
-func pmItemAvailable(it Item, snap pmCloudSnapshot) bool {
-	if h := strings.ToLower(strings.TrimSpace(it.InfoHash)); h != "" && snap.hashes[h] {
-		return true
-	}
-	for _, n := range snap.names {
-		if pmCloudNameMatches(n, it.Title) {
-			return true
-		}
-	}
-	return false
-}
-
-func pmCloudNameMatches(cand, want string) bool {
-	nc, nw := pmNorm(cand), pmNorm(want)
-	if nc == "" || nw == "" {
-		return false
-	}
-	if nc == nw {
-		return true
-	}
-	cp := releasename.Parse(cand, releasename.Hints{})
-	wp := releasename.Parse(want, releasename.Hints{})
-	wt := pmNorm(wp.Title.Value)
-	if wt == "" {
-		return false
-	}
-	ct := pmNorm(cp.Title.Value)
-	if ct != "" && ct == wt {
-		if wp.Year.Value > 0 && cp.Year.Value > 0 && cp.Year.Value != wp.Year.Value {
-			return false
-		}
-	} else {
-		if nc != wt && !strings.HasPrefix(nc, wt+" ") {
-			return false
-		}
-		if wp.Year.Value > 0 {
-			yr := strconv.Itoa(wp.Year.Value)
-			if !strings.Contains(nc, yr) && cp.Year.Value > 0 && cp.Year.Value != wp.Year.Value {
-				return false
-			}
-		}
-	}
-	if wp.Show != nil {
-		if cp.Show == nil {
-			return false
-		}
-		if len(wp.Show.Seasons) > 0 && !pmIntOverlap(cp.Show.Seasons, wp.Show.Seasons) {
-			return false
-		}
-		if len(wp.Show.Episodes) > 0 && !pmIntOverlap(cp.Show.Episodes, wp.Show.Episodes) {
-			return false
-		}
-	}
-	return true
-}
-
-func pmNorm(s string) string {
-	var b strings.Builder
-	lastSpace := false
-	for _, r := range strings.ToLower(s) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-			lastSpace = false
-		} else if !lastSpace && b.Len() > 0 {
-			b.WriteByte(' ')
-			lastSpace = true
-		}
-	}
-	return strings.TrimSpace(b.String())
-}
-
-func pmIntOverlap(a, b []int) bool {
-	for _, x := range a {
-		for _, y := range b {
-			if x == y {
-				return true
-			}
-		}
-	}
-	return false
 }

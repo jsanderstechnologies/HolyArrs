@@ -188,3 +188,47 @@ func TestPremiumizeMatchesTitleAndYearInCloudFolder(t *testing.T) {
 		t.Fatalf(".strm content = %q, %v", string(b), err)
 	}
 }
+
+func TestPremiumizeAddUsesGlobalCacheDirectDL(t *testing.T) {
+	const hash = "1111111111111111111111111111111111111111"
+	const cdnURL = "https://cdn.premiumize.me/dl/global/Full.Metal.Jacket.1987.mkv"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/transfer/directdl" && r.Method == http.MethodPost {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "success",
+				"content": []map[string]any{
+					{
+						"path": "Full.Metal.Jacket.1987/Full.Metal.Jacket.1987.mkv",
+						"size": 8000000000,
+						"link": cdnURL,
+					},
+				},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	pm := NewPremiumize(srv.URL, "key", srv.Client())
+	pm.SaveRoot = t.TempDir()
+
+	id, err := pm.Add(context.Background(), AddRequest{
+		URL:      "magnet:?xt=urn:btih:" + hash,
+		Name:     "Full.Metal.Jacket.1987.1080p.BluRay",
+		Category: "movies",
+		InfoHash: hash,
+	})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	job, err := pm.Get(context.Background(), id)
+	if err != nil || job.State != StateFinished || len(job.Files) != 1 {
+		t.Fatalf("Get() = %+v, %v", job, err)
+	}
+	b, err := os.ReadFile(filepath.Join(job.SavePath, filepath.FromSlash(job.Files[0].Name)))
+	if err != nil || strings.TrimSpace(string(b)) != cdnURL {
+		t.Fatalf(".strm content = %q, %v", string(b), err)
+	}
+}

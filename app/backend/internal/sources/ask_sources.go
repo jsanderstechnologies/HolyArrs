@@ -114,7 +114,7 @@ func (s *Searcher) askAll(ctx context.Context, r *jobs.Run, q Query, hand, tv bo
 			s.pause(ctx, src, slowed)
 		}
 		if src.Format == "site" && src.Extra[extraSiteKind] == "torrentio" {
-			items = filterTorrentioByPremiumize(ctx, s.Store, s.Secrets, qq, items)
+			items = filterTorrentioByPremiumize(ctx, s.Store, s.Secrets, items)
 		}
 		for _, item := range items {
 			all = append(all, found{src: src, item: item, keys: secretValues(cl.cfg)})

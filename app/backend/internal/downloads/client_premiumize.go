@@ -180,7 +180,17 @@ func (p *Premiumize) Add(ctx context.Context, r AddRequest) (string, error) {
 		return "", errors.New("premiumize: no local save folder is configured for .strm files")
 	}
 
-	// 1. Check existing transfers in Premiumize.me cloud.
+	// 1. Try instant directdl from the complete Premiumize.me cloud cache.
+	if src := pmDirectDLSrc(hash, r.URL); src != "" {
+		if files, err := p.directDL(ctx, src, name); err == nil && len(files) > 0 {
+			if _, err := p.materializeStrm(id, firstNonEmpty(name, "release"), r.Category, saveDir, files); err != nil {
+				return "", err
+			}
+			return id, nil
+		}
+	}
+
+	// 2. Fallback: check existing transfers in personal Premiumize.me cloud.
 	transfers, err := p.listTransfers(ctx)
 	if err != nil {
 		return "", err
@@ -602,6 +612,88 @@ func (p *Premiumize) searchFolder(ctx context.Context, query, wantName string) (
 		}
 	}
 	return nil, nil
+}
+
+func pmDirectDLSrc(hash, rawURL string) string {
+	u := strings.TrimSpace(rawURL)
+	if strings.HasPrefix(strings.ToLower(u), "magnet:") {
+		return u
+	}
+	if hash != "" {
+		return "magnet:?xt=urn:btih:" + hash
+	}
+	return ""
+}
+
+func (p *Premiumize) directDL(ctx context.Context, src, fallbackName string) ([]pmCloudFile, error) {
+	form := url.Values{}
+	form.Set("apikey", p.apiKey)
+	form.Set("src", src)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.base+"/api/transfer/directdl", strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := p.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return nil, ErrAuth
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("premiumize /api/transfer/directdl: %s", resp.Status)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, pmMaxAnswer+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > pmMaxAnswer {
+		return nil, ErrTooLarge
+	}
+	var out struct {
+		Status   string `json:"status"`
+		Message  string `json:"message"`
+		Location string `json:"location"`
+		Filename string `json:"filename"`
+		Content  []struct {
+			Path       string `json:"path"`
+			Size       int64  `json:"size"`
+			Link       string `json:"link"`
+			StreamLink string `json:"stream_link"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	if out.Status != "success" {
+		return nil, pmStatusErr(out.Message)
+	}
+	var files []pmCloudFile
+	for _, c := range out.Content {
+		rel := strings.TrimSpace(c.Path)
+		if rel == "" {
+			continue
+		}
+		files = append(files, pmCloudFile{
+			RelPath:    rel,
+			Size:       c.Size,
+			Link:       c.Link,
+			StreamLink: c.StreamLink,
+		})
+	}
+	if len(files) == 0 && strings.TrimSpace(out.Location) != "" {
+		fn := strings.TrimSpace(out.Filename)
+		if fn == "" {
+			fn = firstNonEmpty(fallbackName, "movie") + ".mkv"
+		}
+		files = append(files, pmCloudFile{
+			RelPath: fn,
+			Link:    strings.TrimSpace(out.Location),
+		})
+	}
+	return files, nil
 }
 
 func (p *Premiumize) get(ctx context.Context, endpoint string, q url.Values, dst any) error {
