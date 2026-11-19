@@ -65,7 +65,7 @@ func pmHTTPClient(allowLocal bool) *http.Client {
 	}
 	return &http.Client{
 		Timeout:   15 * time.Second,
-		Transport: outbound.NewTransport(allow),
+		Transport: transport(Config{AllowAddr: allow}),
 	}
 }
 
