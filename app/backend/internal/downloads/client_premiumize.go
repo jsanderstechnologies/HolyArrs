@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -742,12 +743,27 @@ func pmMatchesRelease(cand, want string) bool {
 	}
 	cp := releasename.Parse(cand, releasename.Hints{})
 	wp := releasename.Parse(want, releasename.Hints{})
-	ct, wt := pmNormalize(cp.Title.Value), pmNormalize(wp.Title.Value)
-	if ct == "" || wt == "" || ct != wt {
+	wt := pmNormalize(wp.Title.Value)
+	if wt == "" {
 		return false
 	}
-	if wp.Year.Value > 0 && cp.Year.Value > 0 && cp.Year.Value != wp.Year.Value {
-		return false
+	ct := pmNormalize(cp.Title.Value)
+	if ct != "" && ct == wt {
+		if wp.Year.Value > 0 && cp.Year.Value > 0 && cp.Year.Value != wp.Year.Value {
+			return false
+		}
+	} else {
+		// Fallback for plain folder names such as "Full Metal Jacket (1987)"
+		nc := pmNormalize(cand)
+		if nc != wt && !strings.HasPrefix(nc, wt+" ") {
+			return false
+		}
+		if wp.Year.Value > 0 {
+			yr := strconv.Itoa(wp.Year.Value)
+			if !strings.Contains(nc, yr) && cp.Year.Value > 0 && cp.Year.Value != wp.Year.Value {
+				return false
+			}
+		}
 	}
 	if wp.Show != nil {
 		if cp.Show == nil {

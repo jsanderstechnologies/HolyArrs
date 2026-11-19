@@ -144,7 +144,7 @@ func TestPremiumizeMatchesTitleAndYearInCloudFolder(t *testing.T) {
 		case "/api/transfer/list":
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "transfers": []any{}})
 		case "/api/folder/search":
-			if r.URL.Query().Get("q") == "Full Metal Jacket" {
+			if strings.EqualFold(r.URL.Query().Get("q"), "full metal jacket") {
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"status": "success",
 					"content": []map[string]any{
