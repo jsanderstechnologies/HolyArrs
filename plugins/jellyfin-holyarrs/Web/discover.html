@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>HolyArrs Discover</title>
+</head>
+<body>
+    <div id="HolyArrsDiscoverPage" data-role="page" class="page type-interior">
+        <div data-role="content">
+            <div class="content-primary">
+                <div class="sectionTitleContainer flex align-items-center" style="justify-content:space-between;flex-wrap:wrap;gap:1em;">
+                    <h2 class="sectionTitle">HolyArrs Discover</h2>
+                    <form id="HolyArrsSearchForm" style="display:flex;gap:0.6em;flex:1;max-width:520px;">
+                        <input id="HolyArrsSearchInput" type="search" is="emby-input" placeholder="Search movies &amp; shows..." style="flex:1;" />
+                        <button is="emby-button" type="submit" class="raised button-submit">
+                            <span>Search</span>
+                        </button>
+                    </form>
+                </div>
+                <p id="HolyArrsStatus" style="opacity:0.8;margin:0.8em 0;"></p>
+                <div id="HolyArrsResults" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:1.2em;margin-top:1em;"></div>
+            </div>
+        </div>
+        <script type="text/javascript">
+            (function () {
+                var page = document.querySelector('#HolyArrsDiscoverPage');
+                var form = page.querySelector('#HolyArrsSearchForm');
+                var input = page.querySelector('#HolyArrsSearchInput');
+                var statusEl = page.querySelector('#HolyArrsStatus');
+                var resultsEl = page.querySelector('#HolyArrsResults');
+
+                function renderItems(items) {
+                    resultsEl.innerHTML = '';
+                    if (!items || items.length === 0) {
+                        statusEl.textContent = 'No matching movies or shows found.';
+                        return;
+                    }
+                    statusEl.textContent = 'Found ' + items.length + ' result(s).';
+                    items.forEach(function (it) {
+                        var kind = it.kind === 'show' || it.media_type === 'tv' ? 'show' : 'movie';
+                        var tmdbId = it.tmdb_id || it.id || (it.source_ids && it.source_ids.tmdb) || '';
+                        var title = it.name || it.title || 'Untitled';
+                        var year = it.year || '';
+                        var poster = it.poster_url || it.poster || '';
+                        if (!tmdbId) return;
+
+                        var card = document.createElement('div');
+                        card.style.cssText = 'background:rgba(255,255,255,0.05);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;';
+
+                        var imgHtml = poster
+                            ? '<img src="' + poster + '" alt="" style="width:100%;aspect-ratio:2/3;object-fit:cover;" />'
+                            : '<div style="width:100%;aspect-ratio:2/3;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;">No Poster</div>';
+
+                        card.innerHTML = imgHtml +
+                            '<div style="padding:0.75em;display:flex;flex-direction:column;gap:0.4em;flex:1;">' +
+                            '<div style="font-weight:600;line-height:1.25;">' + title.replace(/</g, '&lt;') + '</div>' +
+                            '<div style="font-size:0.85em;opacity:0.7;">' + (kind === 'show' ? 'TV Show' : 'Movie') + (year ? ' · ' + year : '') + '</div>' +
+                            '<button type="button" class="raised button-submit" style="margin-top:auto;padding:0.45em 0.8em;border:0;border-radius:4px;cursor:pointer;">Request</button>' +
+                            '</div>';
+
+                        var btn = card.querySelector('button');
+                        btn.addEventListener('click', function () {
+                            btn.disabled = true;
+                            btn.textContent = 'Requesting...';
+                            fetch(ApiClient.getUrl('HolyArrs/Request/' + kind + '/' + encodeURIComponent(tmdbId)), {
+                                method: 'POST',
+                                headers: { 'X-Emby-Token': ApiClient.accessToken() }
+                            }).then(function (resp) {
+                                if (resp.ok) {
+                                    btn.textContent = 'Requested';
+                                } else {
+                                    btn.disabled = false;
+                                    btn.textContent = 'Failed (' + resp.status + ')';
+                                }
+                            }).catch(function () {
+                                btn.disabled = false;
+                                btn.textContent = 'Error';
+                            });
+                        });
+
+                        resultsEl.appendChild(card);
+                    });
+                }
+
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    var q = input.value.trim();
+                    if (!q) return;
+                    statusEl.textContent = 'Searching HolyArrs...';
+                    fetch(ApiClient.getUrl('HolyArrs/Search', { q: q }), {
+                        headers: { 'X-Emby-Token': ApiClient.accessToken() }
+                    }).then(function (r) {
+                        if (!r.ok) throw new Error('HTTP ' + r.status);
+                        return r.json();
+                    }).then(function (data) {
+                        var list = Array.isArray(data) ? data : (data.items || data.results || []);
+                        renderItems(list);
+                    }).catch(function (err) {
+                        statusEl.textContent = 'Search failed: ' + err.message;
+                    });
+                });
+            })();
+        </script>
+    </div>
+</body>
+</html>

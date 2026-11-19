@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>HolyArrs</title>
+</head>
+<body>
+    <div id="HolyArrsConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="HolyArrsConfigForm">
+                    <div class="sectionTitleContainer flex align-items-center">
+                        <h2 class="sectionTitle">HolyArrs Integration</h2>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="HolyArrsUrl">HolyArrs URL</label>
+                        <input id="HolyArrsUrl" name="HolyArrsUrl" type="text" is="emby-input" />
+                        <div class="fieldDescription">URL of your HolyArrs server (for example: http://holyarrs:6262).</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="ApiKey">HolyArrs API Key</label>
+                        <input id="ApiKey" name="ApiKey" type="password" is="emby-input" />
+                        <div class="fieldDescription">API key created in HolyArrs (Settings &gt; API / Linked apps).</div>
+                    </div>
+                    <div style="display:flex;gap:1em;align-items:center;margin-top:1em;">
+                        <button is="emby-button" type="submit" class="raised button-submit block">
+                            <span>Save</span>
+                        </button>
+                        <button is="emby-button" type="button" id="TestHolyArrsBtn" class="raised">
+                            <span>Test Connection</span>
+                        </button>
+                    </div>
+                    <p id="HolyArrsTestStatus" style="margin-top:1em;"></p>
+                </form>
+            </div>
+        </div>
+        <script type="text/javascript">
+            (function () {
+                var pluginId = 'a7b8c9d0-1234-4567-89ab-cdef01234567';
+                var page = document.querySelector('#HolyArrsConfigPage');
+
+                page.addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        document.querySelector('#HolyArrsUrl').value = config.HolyArrsUrl || 'http://holyarrs:6262';
+                        document.querySelector('#ApiKey').value = config.ApiKey || '';
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+                document.querySelector('#HolyArrsConfigForm').addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        config.HolyArrsUrl = document.querySelector('#HolyArrsUrl').value.trim();
+                        config.ApiKey = document.querySelector('#ApiKey').value.trim();
+                        ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
+                    });
+                    return false;
+                });
+
+                document.querySelector('#TestHolyArrsBtn').addEventListener('click', function () {
+                    var statusEl = document.querySelector('#HolyArrsTestStatus');
+                    statusEl.textContent = 'Testing connection...';
+                    fetch(ApiClient.getUrl('HolyArrs/Ping'), {
+                        headers: { 'X-Emby-Token': ApiClient.accessToken() }
+                    }).then(function (resp) {
+                        if (resp.ok) {
+                            statusEl.textContent = 'Connected to HolyArrs successfully.';
+                        } else {
+                            statusEl.textContent = 'Connection failed (HTTP ' + resp.status + '). Save settings first and verify URL/API key.';
+                        }
+                    }).catch(function (err) {
+                        statusEl.textContent = 'Connection error: ' + err.message;
+                    });
+                });
+            })();
+        </script>
+    </div>
+</body>
+</html>
