@@ -750,25 +750,28 @@ func pmMatchesRelease(cand, want string) bool {
 		return false
 	}
 	if wp.Show != nil {
-		if cp.Show == nil || cp.Show.Season != wp.Show.Season {
+		if cp.Show == nil {
 			return false
 		}
-		if len(wp.Show.Episodes) > 0 {
-			epMatch := false
-			for _, we := range wp.Show.Episodes {
-				for _, ce := range cp.Show.Episodes {
-					if we == ce {
-						epMatch = true
-						break
-					}
-				}
-			}
-			if !epMatch {
-				return false
-			}
+		if len(wp.Show.Seasons) > 0 && !pmIntOverlap(cp.Show.Seasons, wp.Show.Seasons) {
+			return false
+		}
+		if len(wp.Show.Episodes) > 0 && !pmIntOverlap(cp.Show.Episodes, wp.Show.Episodes) {
+			return false
 		}
 	}
 	return true
+}
+
+func pmIntOverlap(a, b []int) bool {
+	for _, x := range a {
+		for _, y := range b {
+			if x == y {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func pmTitleSearchTerm(name string) string {
