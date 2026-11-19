@@ -209,7 +209,8 @@ func (c *Client) siteCall(ctx context.Context, base, text string, q Query) ([]It
 		if !strings.HasPrefix(imdb, "tt") {
 			imdb = "tt" + imdb
 		}
-		endpoint := base + "/stream/movie/" + url.PathEscape(imdb) + ".json"
+		b := torrentioBase(base)
+		endpoint := b + "/stream/movie/" + url.PathEscape(imdb) + ".json"
 		if q.TV {
 			season := q.Season
 			if season <= 0 {
@@ -219,7 +220,7 @@ func (c *Client) siteCall(ctx context.Context, base, text string, q Query) ([]It
 			if ep == "" {
 				ep = "1"
 			}
-			endpoint = fmt.Sprintf("%s/stream/series/%s:%d:%s.json", base, url.PathEscape(imdb), season, url.PathEscape(ep))
+			endpoint = fmt.Sprintf("%s/stream/series/%s:%d:%s.json", b, url.PathEscape(imdb), season, url.PathEscape(ep))
 		}
 		raw, err := c.send(ctx, http.MethodGet, endpoint, nil, nil)
 		if err != nil {
@@ -525,11 +526,19 @@ func parseIPTorrents(raw []byte, base, passkey string) ([]Item, error) {
 	return out, nil
 }
 
+// torrentioBase strips a trailing /manifest.json (and trailing slashes) so a
+// user can paste their full Torrentio manifest.json URL directly.
+func torrentioBase(base string) string {
+	b := strings.TrimRight(strings.TrimSpace(base), "/")
+	b = strings.TrimSuffix(b, "/manifest.json")
+	return strings.TrimRight(b, "/")
+}
+
 // siteTest reads the site's newest list; TorrentsCSV and Torrentio have none, so they run a lightweight check.
 func (c *Client) siteTest(ctx context.Context) (int, error) {
 	if c.cfg.Site == "torrentio" {
-		base := strings.TrimRight(c.cfg.URL, "/")
-		raw, err := c.send(ctx, http.MethodGet, base+"/manifest.json", nil, nil)
+		b := torrentioBase(c.cfg.URL)
+		raw, err := c.send(ctx, http.MethodGet, b+"/manifest.json", nil, nil)
 		if err != nil {
 			return 0, err
 		}
@@ -552,6 +561,7 @@ func (c *Client) siteTest(ctx context.Context) (int, error) {
 var (
 	torrentioSeedRe = regexp.MustCompile(`👤\s*(\d+)`)
 	torrentioSizeRe = regexp.MustCompile(`💾\s*([0-9]+(?:\.[0-9]+)?)\s*(TB|TiB|GB|GiB|MB|MiB|KB|KiB|B)\b`)
+	torrentioHashRe = regexp.MustCompile(`(?i)\b([0-9a-f]{40})\b`)
 )
 
 func parseTorrentio(raw []byte, imdb string) ([]Item, error) {
@@ -560,6 +570,7 @@ func parseTorrentio(raw []byte, imdb string) ([]Item, error) {
 			Name          string `json:"name"`
 			Title         string `json:"title"`
 			InfoHash      string `json:"infoHash"`
+			URL           string `json:"url"`
 			BehaviorHints struct {
 				Filename string `json:"filename"`
 			} `json:"behaviorHints"`
@@ -572,6 +583,11 @@ func parseTorrentio(raw []byte, imdb string) ([]Item, error) {
 	out := make([]Item, 0, len(resp.Streams))
 	for _, s := range resp.Streams {
 		hash := strings.ToLower(strings.TrimSpace(s.InfoHash))
+		if hash == "" && s.URL != "" {
+			if m := torrentioHashRe.FindStringSubmatch(s.URL); len(m) == 2 {
+				hash = strings.ToLower(m[1])
+			}
+		}
 		if hash == "" {
 			continue
 		}

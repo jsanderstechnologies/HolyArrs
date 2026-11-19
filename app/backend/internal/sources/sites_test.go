@@ -283,4 +283,12 @@ func TestTorrentioSite(t *testing.T) {
 	if err != nil || len(tvItems) != 1 || tvItems[0].InfoHash != "fedcba9876543210fedcba9876543210fedcba98" {
 		t.Fatalf("tv Search() = %+v, %v", tvItems, err)
 	}
+
+	cManifest := siteClient(srv.URL+"/manifest.json", "torrentio", "")
+	if n, err := cManifest.siteTest(context.Background()); err != nil || n != 1 {
+		t.Fatalf("manifest siteTest() = %d, %v", n, err)
+	}
+	if mItems, err := cManifest.Search(context.Background(), Query{Title: "Full Metal Jacket", Year: 1987, IMDb: "tt0093058"}); err != nil || len(mItems) != 1 {
+		t.Fatalf("manifest Search() = %+v, %v", mItems, err)
+	}
 }
