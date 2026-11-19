@@ -254,6 +254,7 @@ func (im *Importer) importShow(ctx context.Context, d domain.Download, dr domain
 				minutes = -1
 			}
 		}
+		var why string
 		if !IsStreamFile(plan[i].SourceFile) {
 			if !music && sampleByLength(inspected[plan[i].SourceFile], fakes.lengthMinutes(max(minutes, 0))) {
 				plan[i].Method, plan[i].TargetPath = "refuse", ""
@@ -261,7 +262,8 @@ func (im *Importer) importShow(ctx context.Context, d domain.Download, dr domain
 				delete(olds, i)
 				continue
 			}
-			why, err := fakes.fakeFileOf(plan[i].SourceFile, music, max(minutes, 0), relName)
+			var err error
+			why, err = fakes.fakeFileOf(plan[i].SourceFile, music, max(minutes, 0), relName)
 			if err != nil {
 				plan[i].Method, plan[i].TargetPath = "refuse", ""
 				plan[i].Why = append(plan[i].Why, unreadable(err))
