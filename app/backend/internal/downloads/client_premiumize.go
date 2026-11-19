@@ -419,7 +419,7 @@ func (p *Premiumize) materializeStrm(id, name, category, saveDir string, files [
 		sz := int64(len(content))
 		totalSize += sz
 		jobFiles = append(jobFiles, File{
-			Name:     fullPath,
+			Name:     filepath.ToSlash(rel),
 			Size:     sz,
 			Progress: 1,
 			Priority: 1,

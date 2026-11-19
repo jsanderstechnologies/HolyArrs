@@ -88,9 +88,9 @@ func TestPremiumizeHealthAndAddCreatesStrm(t *testing.T) {
 		t.Fatalf("Get() = %+v", job)
 	}
 
-	strmPath := job.Files[0].Name
-	if filepath.Ext(strmPath) != ".strm" {
-		t.Fatalf("expected .strm file, got %q", strmPath)
+	strmPath := filepath.Join(job.SavePath, filepath.FromSlash(job.Files[0].Name))
+	if filepath.Ext(strmPath) != ".strm" || filepath.IsAbs(job.Files[0].Name) {
+		t.Fatalf("expected relative .strm file, got %q", job.Files[0].Name)
 	}
 	b, err := os.ReadFile(strmPath)
 	if err != nil {
@@ -182,7 +182,8 @@ func TestPremiumizeMatchesTitleAndYearInCloudFolder(t *testing.T) {
 	if err != nil || job.State != StateFinished || len(job.Files) != 1 {
 		t.Fatalf("Get() = %+v, %v", job, err)
 	}
-	b, err := os.ReadFile(job.Files[0].Name)
+	strmPath := filepath.Join(job.SavePath, filepath.FromSlash(job.Files[0].Name))
+	b, err := os.ReadFile(strmPath)
 	if err != nil || strings.TrimSpace(string(b)) != cdnURL {
 		t.Fatalf(".strm content = %q, %v", string(b), err)
 	}
