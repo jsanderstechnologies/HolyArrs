@@ -8,12 +8,12 @@
     "category": "General",
     "versions": [
       {
-        "version": "1.0.0.0",
-        "changelog": "Initial release with HolyArrs Discover & Request integration.",
+        "version": "1.0.1.0",
+        "changelog": "Show main menu entry as Requests and update API key hint.",
         "targetAbi": "10.10.0.0",
-        "sourceUrl": "https://github.com/jsanderstechnologies/HolyArrs/releases/download/jellyfin-v1.0.0/jellyfin-holyarrs_1.0.0.0.zip",
-        "checksum": "602763f8be273a20b5a698662eb5791a",
-        "timestamp": "2026-11-19T19:41:07Z"
+        "sourceUrl": "https://github.com/jsanderstechnologies/HolyArrs/releases/download/jellyfin-v1.0.1/jellyfin-holyarrs_1.0.1.0.zip",
+        "checksum": "b5661189bbccfa95dc9922c3a0d03616",
+        "timestamp": "2026-11-19T19:49:43Z"
       }
     ]
   }
