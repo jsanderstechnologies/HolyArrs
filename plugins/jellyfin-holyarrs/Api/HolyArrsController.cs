@@ -16,6 +16,13 @@ public class HolyArrsController : ControllerBase
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
+    [HttpGet("Config")]
+    public IActionResult GetPublicConfig()
+    {
+        var cfg = Plugin.Instance?.Configuration;
+        return Ok(new { url = cfg?.HolyArrsUrl ?? string.Empty });
+    }
+
     [HttpGet("Ping")]
     public async Task<IActionResult> Ping(CancellationToken ct)
     {

@@ -31,15 +31,15 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         {
             new PluginPageInfo
             {
-                Name = "holyarrs",
+                Name = Name,
                 EmbeddedResourcePath = $"{ns}.Configuration.configPage.html"
             },
             new PluginPageInfo
             {
-                Name = "holyarrs-discover",
+                Name = "holyarrs-requests",
                 EmbeddedResourcePath = $"{ns}.Web.discover.html",
                 EnableInMainMenu = true,
-                MenuSection = "server",
+                MenuSection = "home",
                 MenuIcon = "travel_explore",
                 DisplayName = "Requests"
             }

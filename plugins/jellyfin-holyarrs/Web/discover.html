@@ -9,7 +9,10 @@
         <div data-role="content">
             <div class="content-primary">
                 <div class="sectionTitleContainer flex align-items-center" style="justify-content:space-between;flex-wrap:wrap;gap:1em;">
-                    <h2 class="sectionTitle">Requests</h2>
+                    <div style="display:flex;align-items:center;gap:1em;">
+                        <h2 class="sectionTitle">Requests</h2>
+                        <a id="OpenHolyArrsLink" href="#" target="_blank" rel="noopener" style="display:none;padding:0.4em 0.8em;border-radius:4px;background:rgba(255,255,255,0.12);color:inherit;text-decoration:none;font-size:0.9em;">Open HolyArrs ↗</a>
+                    </div>
                     <form id="HolyArrsSearchForm" style="display:flex;gap:0.6em;flex:1;max-width:520px;">
                         <input id="HolyArrsSearchInput" type="search" is="emby-input" placeholder="Search movies &amp; shows..." style="flex:1;" />
                         <button is="emby-button" type="submit" class="raised button-submit">
@@ -28,6 +31,16 @@
                 var input = page.querySelector('#HolyArrsSearchInput');
                 var statusEl = page.querySelector('#HolyArrsStatus');
                 var resultsEl = page.querySelector('#HolyArrsResults');
+                var openLink = page.querySelector('#OpenHolyArrsLink');
+
+                fetch(ApiClient.getUrl('HolyArrs/Config'), {
+                    headers: { 'X-Emby-Token': ApiClient.accessToken() }
+                }).then(function (r) { return r.ok ? r.json() : null; }).then(function (cfg) {
+                    if (cfg && cfg.url) {
+                        openLink.href = cfg.url;
+                        openLink.style.display = 'inline-block';
+                    }
+                }).catch(function () {});
 
                 function renderItems(items) {
                     resultsEl.innerHTML = '';
