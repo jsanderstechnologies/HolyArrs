@@ -26,7 +26,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Run Go unit tests
-        run: go test ./app/backend/internal/downloads/... ./app/backend/internal/importer/...
+        run: go test ./app/backend/internal/downloads/... ./app/backend/internal/importer/... ./app/backend/internal/sources/...
 
       - name: Read version
         id: ver

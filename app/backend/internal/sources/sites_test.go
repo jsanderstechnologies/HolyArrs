@@ -252,3 +252,35 @@ func TestFileHeaderIPTorrentsCookie(t *testing.T) {
 		t.Fatalf("knaben: %v", h)
 	}
 }
+
+func TestTorrentioSite(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/manifest.json":
+			_, _ = w.Write([]byte(`{"id":"com.stremio.torrentio.addon","name":"Torrentio"}`))
+		case "/stream/movie/tt0093058.json":
+			_, _ = w.Write([]byte(`{"streams":[{"name":"Torrentio\n1080p","title":"Full.Metal.Jacket.1987.1080p.BluRay.x264-GRP\n👤 42 💾 8.5 GB ⚙️ RARBG","infoHash":"0123456789abcdef0123456789abcdef01234567"}]}`))
+		case "/stream/series/tt0944947:1:2.json":
+			_, _ = w.Write([]byte(`{"streams":[{"name":"Torrentio\n720p","title":"Game.of.Thrones.S01E02.720p.WEB.x264-GRP\n👤 15 💾 1.5 GB","infoHash":"fedcba9876543210fedcba9876543210fedcba98"}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	c := siteClient(srv.URL, "torrentio", "")
+	if n, err := c.siteTest(context.Background()); err != nil || n != 1 {
+		t.Fatalf("siteTest() = %d, %v", n, err)
+	}
+	items, err := c.Search(context.Background(), Query{Title: "Full Metal Jacket", Year: 1987, IMDb: "tt0093058"})
+	if err != nil || len(items) != 1 {
+		t.Fatalf("movie Search() = %+v, %v", items, err)
+	}
+	if items[0].InfoHash != "0123456789abcdef0123456789abcdef01234567" || items[0].Seeders == nil || *items[0].Seeders != 42 || items[0].Size != int64(8.5*1024*1024*1024) {
+		t.Fatalf("unexpected movie item %+v", items[0])
+	}
+	tvItems, err := c.Search(context.Background(), Query{Title: "Game of Thrones", TV: true, Season: 1, Episode: "2", IMDb: "tt0944947"})
+	if err != nil || len(tvItems) != 1 || tvItems[0].InfoHash != "fedcba9876543210fedcba9876543210fedcba98" {
+		t.Fatalf("tv Search() = %+v, %v", tvItems, err)
+	}
+}

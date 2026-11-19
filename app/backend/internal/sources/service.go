@@ -30,7 +30,7 @@ var (
 	ErrName     = errors.New("give the Source a name of 1 to 80 characters")
 	ErrNameUsed = errors.New("another Source has that name")
 	ErrFormat   = errors.New("format must be torznab, newznab, rss or site")
-	ErrSite     = errors.New("site must be one of the built-in sites: knaben, torrentscsv, subsplease or iptorrents")
+	ErrSite     = errors.New("site must be one of the built-in sites: knaben, torrentscsv, subsplease, iptorrents or torrentio")
 	ErrProtocol = errors.New("protocol must be torrent or usenet")
 	ErrURL      = errors.New("the address must start with http:// or https:// and name a host")
 	// ErrQuery matches ErrURL under errors.Is, so callers that check ErrURL treat it the same.
@@ -564,8 +564,8 @@ func fill(in Input, src *domain.Source, isNew bool) (key, proxyPass string, err 
 		src.UseFor = *in.UseFor
 	} else if isNew {
 		src.UseFor = domain.SourceUse{Feed: true, AutoSearch: src.Format != "rss", HandSearch: src.Format != "rss"}
-		if site.ID == "torrentscsv" {
-			// TorrentsCSV only searches; it has no newest list to watch.
+		if site.ID == "torrentscsv" || site.ID == "torrentio" {
+			// TorrentsCSV and Torrentio only search; they have no newest list to watch.
 			src.UseFor.Feed = false
 		}
 	}

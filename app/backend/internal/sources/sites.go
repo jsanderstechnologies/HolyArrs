@@ -42,6 +42,7 @@ var Sites = []Site{
 	{ID: "torrentscsv", Name: "TorrentsCSV", URL: "https://torrents-csv.com", Kinds: []string{"movie", "tv", "music"}, GapMS: 2000, PerHour: 100, TimeoutMS: 20000},
 	{ID: "subsplease", Name: "SubsPlease", URL: "https://subsplease.org", Kinds: []string{"tv"}, GapMS: 2000, PerHour: 100, TimeoutMS: 20000},
 	{ID: "iptorrents", Name: "IPTorrents", URL: "https://iptorrents.com", Private: true, Kinds: []string{"movie", "tv", "music"}, GapMS: 3000, PerHour: 60, TimeoutMS: 30000},
+	{ID: "torrentio", Name: "Torrentio", URL: "https://torrentio.strem.fun", Kinds: []string{"movie", "tv"}, GapMS: 1500, PerHour: 120, TimeoutMS: 20000},
 }
 
 // SiteByID finds a built-in site.
@@ -61,6 +62,10 @@ func (c *Client) siteCaps() (Caps, error) {
 	}
 	caps := Caps{Search: true, TVSearch: slices.Contains(s.Kinds, "tv"), MovieSearch: slices.Contains(s.Kinds, "movie"),
 		MusicSearch: slices.Contains(s.Kinds, "music"), Params: map[string][]string{"search": {"q"}}}
+	if s.ID == "torrentio" {
+		caps.Params["movie"] = []string{"imdbid"}
+		caps.Params["tvsearch"] = []string{"imdbid", "season", "ep"}
+	}
 	for _, k := range s.Kinds {
 		caps.Categories = append(caps.Categories, DefaultCategories[k]...)
 	}
@@ -193,6 +198,34 @@ func (c *Client) siteCall(ctx context.Context, base, text string, q Query) ([]It
 			return nil, err
 		}
 		return parseIPTorrents(raw, base, k.passkey)
+	case "torrentio":
+		if q.feed {
+			return nil, nil
+		}
+		imdb := strings.TrimSpace(q.IMDb)
+		if imdb == "" {
+			return nil, nil
+		}
+		if !strings.HasPrefix(imdb, "tt") {
+			imdb = "tt" + imdb
+		}
+		endpoint := base + "/stream/movie/" + url.PathEscape(imdb) + ".json"
+		if q.TV {
+			season := q.Season
+			if season <= 0 {
+				season = 1
+			}
+			ep := strings.TrimSpace(q.Episode)
+			if ep == "" {
+				ep = "1"
+			}
+			endpoint = fmt.Sprintf("%s/stream/series/%s:%d:%s.json", base, url.PathEscape(imdb), season, url.PathEscape(ep))
+		}
+		raw, err := c.send(ctx, http.MethodGet, endpoint, nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		return parseTorrentio(raw, imdb)
 	}
 	return nil, &Error{Kind: KindBroken, Msg: "unknown built-in site"}
 }
@@ -492,14 +525,96 @@ func parseIPTorrents(raw []byte, base, passkey string) ([]Item, error) {
 	return out, nil
 }
 
-// siteTest reads the site's newest list; TorrentsCSV has none, so it runs one small search.
+// siteTest reads the site's newest list; TorrentsCSV and Torrentio have none, so they run a lightweight check.
 func (c *Client) siteTest(ctx context.Context) (int, error) {
+	if c.cfg.Site == "torrentio" {
+		base := strings.TrimRight(c.cfg.URL, "/")
+		raw, err := c.send(ctx, http.MethodGet, base+"/manifest.json", nil, nil)
+		if err != nil {
+			return 0, err
+		}
+		var m struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(raw, &m); err != nil || m.ID == "" {
+			return 0, &Error{Kind: KindBroken, Msg: "Torrentio manifest.json did not return a valid Stremio manifest"}
+		}
+		return 1, nil
+	}
 	q := Query{feed: true}
 	if c.cfg.Site == "torrentscsv" {
 		q = Query{Title: "linux"}
 	}
 	items, err := c.siteSearch(ctx, q, c.cfg.Observe)
 	return len(items), err
+}
+
+var (
+	torrentioSeedRe = regexp.MustCompile(`👤\s*(\d+)`)
+	torrentioSizeRe = regexp.MustCompile(`💾\s*([0-9]+(?:\.[0-9]+)?)\s*(TB|TiB|GB|GiB|MB|MiB|KB|KiB|B)\b`)
+)
+
+func parseTorrentio(raw []byte, imdb string) ([]Item, error) {
+	var resp struct {
+		Streams []struct {
+			Name          string `json:"name"`
+			Title         string `json:"title"`
+			InfoHash      string `json:"infoHash"`
+			BehaviorHints struct {
+				Filename string `json:"filename"`
+			} `json:"behaviorHints"`
+		} `json:"streams"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, &Error{Kind: KindBroken, Msg: "Torrentio returned unreadable JSON"}
+	}
+	now := time.Now().UTC()
+	out := make([]Item, 0, len(resp.Streams))
+	for _, s := range resp.Streams {
+		hash := strings.ToLower(strings.TrimSpace(s.InfoHash))
+		if hash == "" {
+			continue
+		}
+		title := strings.TrimSpace(strings.SplitN(s.Title, "\n", 2)[0])
+		if title == "" && s.BehaviorHints.Filename != "" {
+			title = strings.TrimSpace(s.BehaviorHints.Filename)
+		}
+		if title == "" {
+			continue
+		}
+		it := Item{
+			Title:     title,
+			GUID:      hash,
+			Link:      "magnet:?xt=urn:btih:" + hash + "&dn=" + url.QueryEscape(title),
+			Protocol:  "torrent",
+			InfoHash:  hash,
+			IMDb:      imdb,
+			Published: now,
+		}
+		if m := torrentioSeedRe.FindStringSubmatch(s.Title); len(m) == 2 {
+			if n, err := strconv.Atoi(m[1]); err == nil {
+				it.Seeders = intPtr(n)
+			}
+		}
+		if m := torrentioSizeRe.FindStringSubmatch(s.Title); len(m) == 3 {
+			if val, err := strconv.ParseFloat(m[1], 64); err == nil {
+				var mult float64 = 1
+				switch strings.ToUpper(m[2]) {
+				case "KB", "KIB":
+					mult = 1024
+				case "MB", "MIB":
+					mult = 1024 * 1024
+				case "GB", "GIB":
+					mult = 1024 * 1024 * 1024
+				case "TB", "TIB":
+					mult = 1024 * 1024 * 1024 * 1024
+				}
+				it.Size = int64(val * mult)
+			}
+		}
+		out = append(out, it)
+	}
+	return out, nil
 }
 
 // FileHeader gives the headers src's own site needs to hand out a Release
