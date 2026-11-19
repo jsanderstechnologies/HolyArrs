@@ -222,7 +222,7 @@ func versionFolder(ctx context.Context, db database.Querier, v mediafiles.Versio
 	return filepath.Join(lf.Path, v.FolderName), lf, nil
 }
 
-var videoExt = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true, ".avi": true, ".ts": true, ".m2ts": true, ".wmv": true, ".mov": true, ".webm": true}
+var videoExt = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true, ".avi": true, ".ts": true, ".m2ts": true, ".wmv": true, ".mov": true, ".webm": true, ".strm": true}
 
 // handleScan looks at each Version folder of a Title and reports what is
 // there: whether the folder exists, the video files in it, and which known

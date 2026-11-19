@@ -31,7 +31,7 @@ export function samePathPair(p: PathMap): boolean {
 export interface DownloaderView {
 	id: number;
 	name: string;
-	kind: 'qbittorrent' | 'sabnzbd' | 'transmission' | 'nzbget' | 'deluge' | 'rtorrent' | 'aria2';
+	kind: 'qbittorrent' | 'sabnzbd' | 'transmission' | 'nzbget' | 'deluge' | 'rtorrent' | 'aria2' | 'premiumize';
 	protocol: 'torrent' | 'usenet';
 	url: string;
 	username: string;
@@ -158,7 +158,8 @@ export const kindWords: Record<DownloaderView['kind'], string> = {
 	nzbget: 'NZBGet',
 	deluge: 'Deluge',
 	rtorrent: 'rTorrent',
-	aria2: 'aria2'
+	aria2: 'aria2',
+	premiumize: 'Premiumize.me'
 };
 
 const stateKeys: Record<DownloaderHealth['state'], string> = {
@@ -211,7 +212,7 @@ export function emptyForm(kind: DownloaderView['kind'] = 'qbittorrent'): Downloa
 	return {
 		name: kindWords[kind],
 		kind,
-		url: kind === 'sabnzbd' ? 'http://' : 'http://',
+		url: kind === 'premiumize' ? 'https://www.premiumize.me' : 'http://',
 		username: '',
 		secret: '',
 		category: kind === 'sabnzbd' ? 'movies' : 'holyarrs',

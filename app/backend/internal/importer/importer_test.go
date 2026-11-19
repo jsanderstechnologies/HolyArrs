@@ -339,3 +339,32 @@ func TestExecuteRefusesSameSizeDifferentFile(t *testing.T) {
 		t.Fatal("existing file was changed")
 	}
 }
+
+func TestPlanStrmFile(t *testing.T) {
+	dl := t.TempDir()
+	lib := t.TempDir()
+	src := filepath.Join(dl, "Full.Metal.Jacket.1987.strm")
+	if err := os.WriteFile(src, []byte("https://cdn.premiumize.me/dl/abc/Full.Metal.Jacket.1987.mkv\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cands, err := Scan(dl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tgt := Target{
+		LibraryPath: lib,
+		FolderName:  FolderName("Full Metal Jacket", 1987),
+		TitleID:     2,
+		TitleName:   "Full Metal Jacket",
+		Year:        1987,
+		SlotIDs:     []int64{9},
+	}
+	steps := Plan(cands, tgt)
+	if len(steps) != 1 {
+		t.Fatalf("got %d steps: %+v", len(steps), steps)
+	}
+	wantPath := filepath.Join(lib, "Full Metal Jacket (1987)", "Full Metal Jacket (1987).strm")
+	if steps[0].Method != "hardlink" || steps[0].TargetPath != wantPath {
+		t.Fatalf("got %+v, want hardlink to %q", steps[0], wantPath)
+	}
+}

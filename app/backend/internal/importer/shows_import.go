@@ -235,7 +235,7 @@ func (im *Importer) importShow(ctx context.Context, d domain.Download, dr domain
 				copyWhy = "the copy in place is protected; choose another Version for an upgrade"
 			}
 		}
-		if !music && copyWhy == "" {
+		if !music && copyWhy == "" && !IsStreamFile(plan[i].SourceFile) {
 			facts := InspectFacts(plan[i].SourceFile)
 			inspected[plan[i].SourceFile] = facts
 			copyWhy = unreadOr(copyRefusal(ver, filepath.Base(plan[i].SourceFile), relName, "", facts), facts, plan[i].SourceFile)
@@ -254,28 +254,30 @@ func (im *Importer) importShow(ctx context.Context, d domain.Download, dr domain
 				minutes = -1
 			}
 		}
-		if !music && sampleByLength(inspected[plan[i].SourceFile], fakes.lengthMinutes(max(minutes, 0))) {
-			plan[i].Method, plan[i].TargetPath = "refuse", ""
-			plan[i].Why = append(plan[i].Why, "a sample, not the full video (it plays "+lengthWords(factInt(inspected[plan[i].SourceFile], "runtime_seconds"))+")")
-			delete(olds, i)
-			continue
-		}
-		why, err := fakes.fakeFileOf(plan[i].SourceFile, music, max(minutes, 0), relName)
-		if err != nil {
-			plan[i].Method, plan[i].TargetPath = "refuse", ""
-			plan[i].Why = append(plan[i].Why, unreadable(err))
-			continue
-		}
-		if why == "" {
-			why = mismatch
-		}
-		if why != "" {
-			for _, id := range plan[i].TargetSlotIDs {
-				slots[id].lie = why
+		if !IsStreamFile(plan[i].SourceFile) {
+			if !music && sampleByLength(inspected[plan[i].SourceFile], fakes.lengthMinutes(max(minutes, 0))) {
+				plan[i].Method, plan[i].TargetPath = "refuse", ""
+				plan[i].Why = append(plan[i].Why, "a sample, not the full video (it plays "+lengthWords(factInt(inspected[plan[i].SourceFile], "runtime_seconds"))+")")
+				delete(olds, i)
+				continue
 			}
-			plan[i].Method, plan[i].TargetPath = "refuse", ""
-			plan[i].Why = append(plan[i].Why, why)
-			continue
+			why, err := fakes.fakeFileOf(plan[i].SourceFile, music, max(minutes, 0), relName)
+			if err != nil {
+				plan[i].Method, plan[i].TargetPath = "refuse", ""
+				plan[i].Why = append(plan[i].Why, unreadable(err))
+				continue
+			}
+			if why == "" {
+				why = mismatch
+			}
+			if why != "" {
+				for _, id := range plan[i].TargetSlotIDs {
+					slots[id].lie = why
+				}
+				plan[i].Method, plan[i].TargetPath = "refuse", ""
+				plan[i].Why = append(plan[i].Why, why)
+				continue
+			}
 		}
 		name := strings.TrimSuffix(filepath.Base(plan[i].SourceFile), filepath.Ext(plan[i].SourceFile))
 		oldName := ""

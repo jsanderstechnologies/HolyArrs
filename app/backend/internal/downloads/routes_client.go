@@ -461,6 +461,8 @@ func adapterWord(adapter string) string {
 		return "rTorrent"
 	case "aria2":
 		return "aria2"
+	case "premiumize":
+		return "Premiumize.me"
 	case "sabnzbd":
 		return "SABnzbd"
 	case "nzbget":

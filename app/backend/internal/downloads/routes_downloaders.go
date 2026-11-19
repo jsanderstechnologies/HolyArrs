@@ -134,7 +134,7 @@ func (a *Web) listDownloaders(w http.ResponseWriter, r *http.Request) {
 	webserver.WriteJSON(w, http.StatusOK, map[string]any{"downloaders": out})
 }
 
-const downloaderHelp = `send name, kind (qbittorrent, transmission, deluge, rtorrent, aria2, sabnzbd or nzbget), url, and if needed secret (an API key or password; qBittorrent takes its API key with no username, or a username and password; aria2 takes its RPC secret and no username), category, priority (1 to 50), path_map [{theirs, ours}], allow_local_network, writable, clear_finished`
+const downloaderHelp = `send name, kind (qbittorrent, transmission, deluge, rtorrent, aria2, premiumize, sabnzbd or nzbget), url, and if needed secret (an API key or password; qBittorrent takes its API key with no username, or a username and password; aria2 takes its RPC secret and no username; premiumize takes its Premiumize.me API key), category, priority (1 to 50), path_map [{theirs, ours}], allow_local_network, writable, clear_finished`
 
 func downloaderError(w http.ResponseWriter, err error) {
 	switch {

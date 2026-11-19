@@ -419,7 +419,7 @@
 						</div>
 					{/if}
 					<div class="field">
-						<label for="dl-secret">{downloaderStep.dl.kind === 'sabnzbd' || (downloaderStep.dl.kind === 'qbittorrent' && downloaderStep.qbitWay === 'key') ? t('welcome.apiKeyLabel') : downloaderStep.dl.kind === 'aria2' ? t('welcome.secretTokenLabel') : t('welcome.passwordLabel')}</label>
+						<label for="dl-secret">{downloaderStep.dl.kind === 'sabnzbd' || downloaderStep.dl.kind === 'premiumize' || (downloaderStep.dl.kind === 'qbittorrent' && downloaderStep.qbitWay === 'key') ? t('welcome.apiKeyLabel') : downloaderStep.dl.kind === 'aria2' ? t('welcome.secretTokenLabel') : t('welcome.passwordLabel')}</label>
 						<input id="dl-secret" class="input" type="password" bind:value={downloaderStep.dl.secret} autocomplete="new-password" spellcheck="false" aria-describedby={downloaderStep.dl.kind === 'qbittorrent' && downloaderStep.qbitWay === 'key' ? 'dl-secret-hint' : undefined} />
 						{#if downloaderStep.dl.kind === 'qbittorrent' && downloaderStep.qbitWay === 'key'}<span class="hint" id="dl-secret-hint">{t('settings.downloaders.secretQbit')}</span>{/if}
 					</div>

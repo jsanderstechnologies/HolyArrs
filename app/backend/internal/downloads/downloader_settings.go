@@ -31,6 +31,7 @@ var (
 	ErrUsername    = errors.New("the sign-in name must be at most 100 characters")
 	ErrKeyNeed     = errors.New("SABnzbd needs its API key (SABnzbd: Config > General)")
 	ErrQbitKey     = errors.New("qBittorrent needs an API key (qBittorrent 5.2 or newer: Options > Web UI > API key) or a user name and password")
+	ErrPremiumizeKey = errors.New("Premiumize.me needs its API key (Account > API Key)")
 	ErrKeyAgain    = errors.New("the address changed to another host; type the key or password again so it is never sent to a new host by itself")
 	ErrNoVault     = errors.New("keys cannot be stored: the secrets vault is not open")
 	// ErrAfterImportCategory means a category after import was asked of a
@@ -88,6 +89,9 @@ func Add(ctx context.Context, s *database.Store, v *secrets.Vault, in Input, by 
 	}
 	if d.Adapter == "qbittorrent" && in.Secret == "" {
 		return d, ErrQbitKey
+	}
+	if d.Adapter == "premiumize" && in.Secret == "" {
+		return d, ErrPremiumizeKey
 	}
 	err := s.Write(ctx, func(tx *sql.Tx) error {
 		if err := nameUsed(tx, d.Name, 0); err != nil {
@@ -148,6 +152,9 @@ func Change(ctx context.Context, s *database.Store, v *secrets.Vault, id int64, 
 			}
 			if d.Adapter == "qbittorrent" && in.Secret == "" {
 				return ErrQbitKey
+			}
+			if d.Adapter == "premiumize" && in.Secret == "" {
+				return ErrPremiumizeKey
 			}
 			if err := dropSecret(tx, &d); err != nil {
 				return err
@@ -279,7 +286,7 @@ func fill(in Input, d *domain.Downloader, isNew bool) error {
 	d.Name = name
 	if isNew || in.Adapter != "" {
 		switch in.Adapter {
-		case "qbittorrent", "transmission", "deluge", "rtorrent", "aria2":
+		case "qbittorrent", "transmission", "deluge", "rtorrent", "aria2", "premiumize":
 			d.Protocol = "torrent"
 		case "sabnzbd", "nzbget":
 			d.Protocol = "usenet"

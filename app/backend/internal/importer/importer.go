@@ -66,7 +66,12 @@ func (t Target) fileName(p releasename.Result, source string) string {
 }
 
 var videoExt = map[string]bool{".mkv": true, ".mp4": true, ".avi": true, ".m4v": true, ".ts": true, ".m2ts": true, ".wmv": true,
-	".mov": true, ".webm": true, ".mpg": true, ".mpeg": true}
+	".mov": true, ".webm": true, ".mpg": true, ".mpeg": true, ".strm": true}
+
+// IsStreamFile reports whether path is a .strm stream pointer file.
+func IsStreamFile(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".strm")
+}
 
 var discExt = map[string]bool{".iso": true, ".img": true, ".vob": true, ".ifo": true, ".bdmv": true, ".mts": true}
 

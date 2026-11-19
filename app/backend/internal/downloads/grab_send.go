@@ -134,8 +134,8 @@ func (m *Manager) send(ctx context.Context, d domain.Downloader, rel domain.Rele
 	// same way, even from a local Source: the hash comes from the file, so the
 	// download can be followed.
 	var file []byte
-	noHash := d.Adapter == "qbittorrent" && hash == "" && linkHash(link) == ""
-	if (d.Adapter == "qbittorrent" || d.Adapter == "sabnzbd") && (!allowLocal || noHash || hdr != nil) && !strings.HasPrefix(link, "magnet:") {
+	noHash := (d.Adapter == "qbittorrent" || d.Adapter == "premiumize") && hash == "" && linkHash(link) == ""
+	if (d.Adapter == "qbittorrent" || d.Adapter == "premiumize" || d.Adapter == "sabnzbd") && (!allowLocal || noHash || hdr != nil) && !strings.HasPrefix(link, "magnet:") {
 		var rt http.RoundTripper
 		if src.ProxyURL != "" {
 			if m.SourceTransport == nil {
@@ -161,7 +161,7 @@ func (m *Manager) send(ctx context.Context, d domain.Downloader, rel domain.Rele
 	// which Transmission, Deluge, rTorrent, aria2 and some qBittorrent stand-ins cannot follow. A
 	// torrent link not read above (a home Source whose Release has a hash) is read
 	// here and the magnet or file is sent; if that fails the link is sent as before.
-	torrentAdapter := d.Adapter == "transmission" || d.Adapter == "deluge" || d.Adapter == "rtorrent" || d.Adapter == "aria2" || d.Adapter == "qbittorrent" && src.ProxyURL == ""
+	torrentAdapter := d.Adapter == "transmission" || d.Adapter == "deluge" || d.Adapter == "rtorrent" || d.Adapter == "aria2" || d.Adapter == "premiumize" || d.Adapter == "qbittorrent" && src.ProxyURL == ""
 	if torrentAdapter && file == nil && !strings.HasPrefix(link, "magnet:") {
 		link, file = prefetchTorrentHeader(ctx, link, allowLocal, sourceLocalHost(src.URL, allowLocal), hdr)
 		if hdr != nil && file == nil && !strings.HasPrefix(link, "magnet:") {

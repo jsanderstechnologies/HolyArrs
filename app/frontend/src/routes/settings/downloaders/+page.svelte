@@ -151,7 +151,8 @@
 			{ value: 'transmission' as const, name: 'Transmission', badge: 'Tr', hue: 0 },
 			{ value: 'deluge' as const, name: 'Deluge', badge: 'De', hue: 195 },
 			{ value: 'rtorrent' as const, name: 'rTorrent', badge: 'rT', hue: 270 },
-			{ value: 'aria2' as const, name: 'aria2', badge: 'a2', hue: 30 }
+			{ value: 'aria2' as const, name: 'aria2', badge: 'a2', hue: 30 },
+			{ value: 'premiumize' as const, name: 'Premiumize.me', badge: 'PM', hue: 165 }
 		] },
 		{ id: 'usenet', title: t('settings.downloaders.usenetHead'), tiles: [
 			{ value: 'sabnzbd' as const, name: 'SABnzbd', badge: 'SB', hue: 45, hint: t('settings.downloaders.mostUsed') },
@@ -184,6 +185,8 @@
 				return 'http://192.168.1.10:8000/RPC2';
 			case 'aria2':
 				return 'http://192.168.1.10:6800/jsonrpc';
+			case 'premiumize':
+				return 'https://www.premiumize.me';
 			default:
 				return 'http://192.168.1.10:8090';
 		}
@@ -411,10 +414,10 @@
 					</Field>
 				</div>
 			{:else}
-				{@const key = form.kind === 'sabnzbd' || form.kind === 'qbittorrent'}
+				{@const key = form.kind === 'sabnzbd' || form.kind === 'qbittorrent' || form.kind === 'premiumize'}
 				<Field id="dl-secret" label={key ? t('settings.downloaders.apiKeyLabel') : form.kind === 'aria2' ? t('settings.downloaders.secretTokenLabel') : t('settings.downloaders.passwordLabel')}>
 					<input id="dl-secret" class="input" class:mono={key} type="password" bind:value={form.secret} autocomplete="new-password" spellcheck="false" required={isNew && form.kind !== 'aria2'} data-testid="dl-secret" />
-					<span class="hint">{form.kind === 'sabnzbd' ? t('settings.downloaders.secretSab') : form.kind === 'qbittorrent' ? t('settings.downloaders.secretQbit') : form.kind === 'aria2' ? t('settings.downloaders.secretAria2') : t('settings.downloaders.secretDeluge')} {t('settings.downloaders.secretKept')}</span>
+					<span class="hint">{form.kind === 'sabnzbd' ? t('settings.downloaders.secretSab') : form.kind === 'qbittorrent' ? t('settings.downloaders.secretQbit') : form.kind === 'aria2' ? t('settings.downloaders.secretAria2') : form.kind === 'premiumize' ? 'Your Premiumize.me API key (Account > API Key).' : t('settings.downloaders.secretDeluge')} {t('settings.downloaders.secretKept')}</span>
 				</Field>
 			{/if}
 			{#if form.kind === 'deluge'}

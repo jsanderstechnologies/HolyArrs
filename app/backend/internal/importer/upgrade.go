@@ -70,6 +70,16 @@ func checkUpgrade(ctx context.Context, db *sql.DB, sl mediafiles.Slot, ver media
 			plan[i].Why = append(plan[i].Why, u.copyWhy)
 			continue
 		}
+		if IsStreamFile(plan[i].SourceFile) {
+			u.facts[plan[i].SourceFile] = map[string]any{}
+			name := strings.TrimSuffix(filepath.Base(plan[i].SourceFile), filepath.Ext(plan[i].SourceFile))
+			if why := lieOf(name, u.relName, u.old != nil, u.oldName, u.rules, u.facts[plan[i].SourceFile]); why != "" {
+				u.lie = why
+				plan[i].Method, plan[i].TargetPath = "refuse", ""
+				plan[i].Why = append(plan[i].Why, why)
+			}
+			continue
+		}
 		facts := InspectFacts(plan[i].SourceFile)
 		u.facts[plan[i].SourceFile] = facts
 		if sampleByLength(facts, fakes.lengthMinutes(minutes)) {

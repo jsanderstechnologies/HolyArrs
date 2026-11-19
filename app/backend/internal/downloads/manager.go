@@ -224,6 +224,16 @@ func (m *Manager) EngineFor(ctx context.Context, d domain.Downloader) (Engine, e
 		e.PathMap, e.SaveRoot = d.PathMap, m.SavePath
 		e.Keep = m.libraryFolders
 		return e, nil
+	case "premiumize":
+		e := NewPremiumize(d.URL, secret, h)
+		e.Category, e.Others = d.Category, otherCategories(d)
+		e.PathMap = d.PathMap
+		e.SaveRoot = m.SavePath
+		if e.SaveRoot == "" && m.ConfigDir != "" {
+			e.SaveRoot = m.ConfigDir + "/premiumize-strm"
+		}
+		e.Keep = m.libraryFolders
+		return e, nil
 	}
 	return nil, fmt.Errorf("no engine for adapter %q", d.Adapter)
 }
