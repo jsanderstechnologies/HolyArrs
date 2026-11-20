@@ -135,6 +135,9 @@ func TestPremiumizeAddNotFoundInCloud(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "no matching torrent found in Premiumize.me cloud") {
 		t.Fatalf("expected not-found error, got %v", err)
 	}
+	if fe, ok := err.(interface{ Final() bool }); !ok || !fe.Final() {
+		t.Fatalf("expected final releaseRefused error so grab moves to next release, got %T", err)
+	}
 }
 
 func TestPremiumizeMatchesTitleAndYearInCloudFolder(t *testing.T) {

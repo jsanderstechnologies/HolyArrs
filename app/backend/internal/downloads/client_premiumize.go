@@ -244,7 +244,7 @@ func (p *Premiumize) Add(ctx context.Context, r AddRequest) (string, error) {
 		return "", err
 	}
 	if len(files) == 0 {
-		return "", fmt.Errorf("no matching torrent found in Premiumize.me cloud for %q", name)
+		return "", releaseRefused{fmt.Sprintf("no matching torrent found in Premiumize.me cloud for %q", name)}
 	}
 	if _, err := p.materializeStrm(id, firstNonEmpty(name, matchedName), r.Category, saveDir, files); err != nil {
 		return "", err
@@ -400,7 +400,7 @@ func (p *Premiumize) refreshPending(ctx context.Context) {
 func (p *Premiumize) materializeStrm(id, name, category, saveDir string, files []pmCloudFile) (Job, error) {
 	videos := filterVideoCloudFiles(files)
 	if len(videos) == 0 {
-		return Job{}, fmt.Errorf("no video files with CDN links found in Premiumize.me for %q", name)
+		return Job{}, releaseRefused{fmt.Sprintf("no video files with CDN links found in Premiumize.me for %q", name)}
 	}
 	releaseDir := filepath.Join(saveDir, pmSafeName(name))
 	if err := os.MkdirAll(releaseDir, 0o755); err != nil {
@@ -436,7 +436,7 @@ func (p *Premiumize) materializeStrm(id, name, category, saveDir string, files [
 		})
 	}
 	if len(jobFiles) == 0 {
-		return Job{}, fmt.Errorf("no playable CDN links returned by Premiumize.me for %q", name)
+		return Job{}, releaseRefused{fmt.Sprintf("no playable CDN links returned by Premiumize.me for %q", name)}
 	}
 
 	now := time.Now().Unix()
