@@ -190,7 +190,7 @@
 				{#if form.format === 'site'}
 					<Field id="so-site" label={t('settings.sources.siteLabel')}>
 						<select id="so-site" class="input" value={form.site} disabled={!isNew} onchange={(e) => pickSite(form, e.currentTarget.value)}>
-							{#each builtInSites.filter((s) => s.id === 'torrentio') as s (s.id)}<option value={s.id}>{s.name}</option>{/each}
+							{#each builtInSites as s (s.id)}<option value={s.id}>{s.name}</option>{/each}
 						</select>
 					</Field>
 				{:else}
