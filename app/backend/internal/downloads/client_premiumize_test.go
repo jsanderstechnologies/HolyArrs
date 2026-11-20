@@ -110,14 +110,100 @@ func TestPremiumizeHealthAndAddCreatesStrm(t *testing.T) {
 }
 
 func TestPremiumizeAddNotFoundInCloud(t *testing.T) {
+	const cdnURL = "https://cdn.premiumize.me/dl/global-after-transfer/Full.Metal.Jacket.1987.mkv"
+	created := false
+	deletedTransfer := false
+	deletedFolder := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/api/transfer/directdl":
+			if !deletedFolder {
+				_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "message": "not cached"})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "success",
+				"content": []map[string]any{
+					{"path": "Full.Metal.Jacket.1987.mkv", "size": 123456, "link": cdnURL},
+				},
+			})
+		case "/api/transfer/list":
+			if !created {
+				_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "transfers": []any{}})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "success",
+				"transfers": []map[string]any{
+					{
+						"id":        "tr-new-1",
+						"name":      "Full.Metal.Jacket.1987.1080p.BluRay.x264-GRP",
+						"status":    "finished",
+						"progress":  1,
+						"src":       "magnet:?xt=urn:btih:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+						"folder_id": "fld-new-1",
+					},
+				},
+			})
+		case "/api/folder/search":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "content": []any{}})
+		case "/api/item/listall":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "files": []any{}})
+		case "/api/transfer/create":
+			created = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "id": "tr-new-1"})
+		case "/api/transfer/delete":
+			deletedTransfer = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success"})
+		case "/api/folder/delete":
+			deletedFolder = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success"})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	pm := NewPremiumize(srv.URL, "key", srv.Client())
+	pm.SaveRoot = t.TempDir()
+
+	id, err := pm.Add(context.Background(), AddRequest{
+		Name:     "Full.Metal.Jacket.1987.1080p.BluRay.x264-GRP",
+		Category: "movies",
+		InfoHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	})
+	if err != nil {
+		t.Fatalf("expected transfer create to succeed, got %v", err)
+	}
+	if !created {
+		t.Fatalf("expected /api/transfer/create to be called")
+	}
+
+	j, err := pm.Get(context.Background(), id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !deletedTransfer || !deletedFolder {
+		t.Fatalf("expected personal transfer and folder to be deleted (transfer=%v folder=%v)", deletedTransfer, deletedFolder)
+	}
+	if j.State != StateFinished || len(j.Files) != 1 {
+		t.Fatalf("expected finished job with 1 strm file, got state=%s files=%v detail=%q", j.State, j.Files, j.Detail)
+	}
+}
+
+func TestPremiumizeCreateTransferRefused(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/transfer/directdl":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "message": "not cached"})
 		case "/api/transfer/list":
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "transfers": []any{}})
 		case "/api/folder/search":
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "content": []any{}})
 		case "/api/item/listall":
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "files": []any{}})
+		case "/api/transfer/create":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "message": "invalid magnet"})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -132,8 +218,8 @@ func TestPremiumizeAddNotFoundInCloud(t *testing.T) {
 		Category: "movies",
 		InfoHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	})
-	if err == nil || !strings.Contains(err.Error(), "no matching torrent found in Premiumize.me cloud") {
-		t.Fatalf("expected not-found error, got %v", err)
+	if err == nil {
+		t.Fatalf("expected error when transfer/create fails")
 	}
 	if fe, ok := err.(interface{ Final() bool }); !ok || !fe.Final() {
 		t.Fatalf("expected final releaseRefused error so grab moves to next release, got %T", err)

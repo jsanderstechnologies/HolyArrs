@@ -1,6 +1,7 @@
 package downloads
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
@@ -8,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -52,10 +54,12 @@ type Premiumize struct {
 }
 
 type pmPending struct {
-	transferID string
-	name       string
-	category   string
-	saveDir    string
+	transferID  string
+	name        string
+	category    string
+	saveDir     string
+	src         string
+	deleteAfter bool
 }
 
 type pmAccountInfo struct {
@@ -238,17 +242,53 @@ func (p *Premiumize) Add(ctx context.Context, r AddRequest) (string, error) {
 		}
 	}
 
-	// 2. Fallback: search Premiumize.me cloud folders/files directly (in case transfer history was cleared).
+	// 3. Fallback: search Premiumize.me cloud folders/files directly (in case transfer history was cleared).
 	files, matchedName, err := p.findCloudFilesByName(ctx, name)
 	if err != nil {
 		return "", err
 	}
-	if len(files) == 0 {
+	if len(files) > 0 {
+		if _, err := p.materializeStrm(id, firstNonEmpty(name, matchedName), r.Category, saveDir, files); err != nil {
+			return "", err
+		}
+		return id, nil
+	}
+
+	// 4. Not in global cache or personal cloud: download to personal cloud, then
+	// delete from personal cloud and materialize .strm from global cache once finished.
+	if r.ReconcileOnly {
+		return "", ErrNotArrived
+	}
+	transferSrc := pmDirectDLSrc(hash, r.URL)
+	if transferSrc == "" {
+		transferSrc = strings.TrimSpace(r.URL)
+	}
+	if transferSrc == "" && len(r.File) == 0 {
 		return "", releaseRefused{fmt.Sprintf("no matching torrent found in Premiumize.me cloud for %q", name)}
 	}
-	if _, err := p.materializeStrm(id, firstNonEmpty(name, matchedName), r.Category, saveDir, files); err != nil {
-		return "", err
+	transferID, err := p.createTransfer(ctx, transferSrc, r.File, name)
+	if err != nil {
+		if errors.Is(err, ErrAuth) || errors.Is(err, ErrTooLarge) || unreachable(err) {
+			return "", err
+		}
+		return "", releaseRefused{fmt.Sprintf("no matching torrent found in Premiumize.me cloud for %q: %v", name, err)}
 	}
+	now := time.Now().Unix()
+	p.mu.Lock()
+	p.pending[id] = pmPending{
+		transferID:  transferID,
+		name:        firstNonEmpty(name, "release"),
+		category:    r.Category,
+		saveDir:     saveDir,
+		src:         transferSrc,
+		deleteAfter: true,
+	}
+	p.jobs[id] = Job{
+		ID: id, Name: firstNonEmpty(name, "release"), Category: r.Category,
+		SavePath: saveDir, Progress: 0, State: StateDownloading,
+		Detail: "queued", AddedAt: now,
+	}
+	p.mu.Unlock()
 	return id, nil
 }
 
@@ -355,27 +395,7 @@ func (p *Premiumize) refreshPending(ctx context.Context) {
 		}
 		st := strings.ToLower(tr.Status)
 		if st == "finished" || tr.Progress >= 1 {
-			files, err := p.filesFromTransfer(ctx, tr)
-			if err != nil || len(files) == 0 {
-				p.mu.Lock()
-				if j, exists := p.jobs[id]; exists {
-					j.State = StateFailed
-					if err != nil {
-						j.Detail = err.Error()
-					} else {
-						j.Detail = "no video files found in Premiumize.me transfer"
-					}
-					p.jobs[id] = j
-				}
-				delete(p.pending, id)
-				p.mu.Unlock()
-				continue
-			}
-			if _, err := p.materializeStrm(id, pend.name, pend.category, pend.saveDir, files); err == nil {
-				p.mu.Lock()
-				delete(p.pending, id)
-				p.mu.Unlock()
-			}
+			p.finishPendingTransfer(ctx, id, pend, tr)
 		} else if st == "error" || st == "deleted" || st == "timeout" || st == "banned" {
 			p.mu.Lock()
 			if j, exists := p.jobs[id]; exists {
@@ -395,6 +415,48 @@ func (p *Premiumize) refreshPending(ctx context.Context) {
 			p.mu.Unlock()
 		}
 	}
+}
+
+func (p *Premiumize) finishPendingTransfer(ctx context.Context, id string, pend pmPending, tr pmTransfer) {
+	fail := func(detail string) {
+		p.mu.Lock()
+		if j, exists := p.jobs[id]; exists {
+			j.State = StateFailed
+			j.Detail = detail
+			p.jobs[id] = j
+		}
+		delete(p.pending, id)
+		p.mu.Unlock()
+	}
+
+	var files []pmCloudFile
+	var err error
+	if pend.deleteAfter {
+		p.cleanupPersonalTransfer(ctx, tr)
+		src := firstNonEmpty(pend.src, tr.Src)
+		if src == "" {
+			fail("no source hash or link to resolve Premiumize.me global cache")
+			return
+		}
+		files, err = p.directDL(ctx, src, pend.name)
+	} else {
+		files, err = p.filesFromTransfer(ctx, tr)
+	}
+	if err != nil {
+		fail(err.Error())
+		return
+	}
+	if len(files) == 0 {
+		fail("no video files found in Premiumize.me transfer")
+		return
+	}
+	if _, err := p.materializeStrm(id, pend.name, pend.category, pend.saveDir, files); err != nil {
+		fail(err.Error())
+		return
+	}
+	p.mu.Lock()
+	delete(p.pending, id)
+	p.mu.Unlock()
 }
 
 func (p *Premiumize) materializeStrm(id, name, category, saveDir string, files []pmCloudFile) (Job, error) {
@@ -625,33 +687,70 @@ func pmDirectDLSrc(hash, rawURL string) string {
 	return ""
 }
 
+func (p *Premiumize) createTransfer(ctx context.Context, src string, file []byte, name string) (string, error) {
+	var out struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+		ID      string `json:"id"`
+	}
+	if src != "" {
+		form := url.Values{}
+		form.Set("src", src)
+		if err := p.postForm(ctx, "/api/transfer/create", form, &out); err != nil {
+			return "", err
+		}
+	} else {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		_ = mw.WriteField("apikey", p.apiKey)
+		fn := pmSafeName(name)
+		if fn == "" {
+			fn = "release"
+		}
+		fw, err := mw.CreateFormFile("file", fn+".torrent")
+		if err != nil {
+			return "", err
+		}
+		if _, err := fw.Write(file); err != nil {
+			return "", err
+		}
+		if err := mw.Close(); err != nil {
+			return "", err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.base+"/api/transfer/create", &body)
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		if err := p.doJSON(req, "/api/transfer/create", &out); err != nil {
+			return "", err
+		}
+	}
+	if out.Status != "success" {
+		return "", pmStatusErr(out.Message)
+	}
+	if strings.TrimSpace(out.ID) == "" {
+		return "", errors.New("premiumize /api/transfer/create returned no transfer id")
+	}
+	return out.ID, nil
+}
+
+func (p *Premiumize) cleanupPersonalTransfer(ctx context.Context, tr pmTransfer) {
+	var res struct {
+		Status string `json:"status"`
+	}
+	if tr.ID != "" {
+		_ = p.postForm(ctx, "/api/transfer/delete", url.Values{"id": {tr.ID}}, &res)
+	}
+	if tr.FolderID != "" {
+		_ = p.postForm(ctx, "/api/folder/delete", url.Values{"id": {tr.FolderID}}, &res)
+	}
+	if tr.FileID != "" {
+		_ = p.postForm(ctx, "/api/item/delete", url.Values{"id": {tr.FileID}}, &res)
+	}
+}
+
 func (p *Premiumize) directDL(ctx context.Context, src, fallbackName string) ([]pmCloudFile, error) {
-	form := url.Values{}
-	form.Set("apikey", p.apiKey)
-	form.Set("src", src)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.base+"/api/transfer/directdl", strings.NewReader(form.Encode()))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := p.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return nil, ErrAuth
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("premiumize /api/transfer/directdl: %s", resp.Status)
-	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, pmMaxAnswer+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(b)) > pmMaxAnswer {
-		return nil, ErrTooLarge
-	}
 	var out struct {
 		Status   string `json:"status"`
 		Message  string `json:"message"`
@@ -664,7 +763,7 @@ func (p *Premiumize) directDL(ctx context.Context, src, fallbackName string) ([]
 			StreamLink string `json:"stream_link"`
 		} `json:"content"`
 	}
-	if err := json.Unmarshal(b, &out); err != nil {
+	if err := p.postForm(ctx, "/api/transfer/directdl", url.Values{"src": {src}}, &out); err != nil {
 		return nil, err
 	}
 	if out.Status != "success" {
@@ -694,6 +793,44 @@ func (p *Premiumize) directDL(ctx context.Context, src, fallbackName string) ([]
 		})
 	}
 	return files, nil
+}
+
+func (p *Premiumize) postForm(ctx context.Context, endpoint string, form url.Values, dst any) error {
+	if form == nil {
+		form = url.Values{}
+	}
+	form.Set("apikey", p.apiKey)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.base+endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return p.doJSON(req, endpoint, dst)
+}
+
+func (p *Premiumize) doJSON(req *http.Request, endpoint string, dst any) error {
+	resp, err := p.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return ErrAuth
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("premiumize %s: %s", endpoint, resp.Status)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, pmMaxAnswer+1))
+	if err != nil {
+		return err
+	}
+	if int64(len(b)) > pmMaxAnswer {
+		return ErrTooLarge
+	}
+	if err := json.Unmarshal(b, dst); err != nil {
+		return fmt.Errorf("premiumize %s: %w", endpoint, err)
+	}
+	return nil
 }
 
 func (p *Premiumize) get(ctx context.Context, endpoint string, q url.Values, dst any) error {
